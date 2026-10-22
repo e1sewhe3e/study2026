@@ -18,6 +18,7 @@ summary::-webkit-details-marker{display:none}summary:after{content:"＋";font-si
 .field textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;line-height:1.7;resize:vertical;background:#fff;color:var(--ink)}
 .warn{background:#fff8e6;border:1px solid #f1d9a0;color:#7a5200;font-size:13.5px;line-height:1.6;padding:10px 14px}.warn b{font-weight:700}
 .vwrap{position:relative;background:#000;border-radius:12px;overflow:hidden;margin:14px 0}.vwrap video{width:100%;display:block;max-height:70vh}.vmsg{position:absolute;inset:0;display:grid;place-items:center;color:#fff;text-align:center;padding:20px;background:rgba(0,0,0,.6)}
+.savebox{text-align:center;background:#fff8e6;border:2px solid #f1b84b;border-radius:14px;padding:32px 20px;margin-top:30px}.savebox h1{font-size:24px}.savebox p{font-size:17px;color:#7a5200;line-height:1.7}.spin{width:44px;height:44px;border:5px solid #f1d9a0;border-top-color:#e8891a;border-radius:50%;margin:0 auto 14px;animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}.okbox{background:#e7f6ec;border:2px solid #4caf73;color:#1b6b3a;border-radius:12px;padding:14px 16px;font-weight:700;margin-bottom:16px}
 </style></head><body>
 <header><div class="top"><span>LEARNING STUDY · 학습 실험</span><span class="tag">미리보기 시안</span></div></header>
 <main><div class="meta"><span id="stepName">연구 설명서</span><span id="stepNum">1 / 12</span></div><div class="track"><div class="bar" id="bar"></div></div><section class="card" id="app"></section></main>
@@ -59,13 +60,27 @@ function setupVideo(key){
  document.addEventListener("visibilitychange",vidHide);
 }
 const t0=Date.now();let saved=false,saving=false;
-async function submitAll(){
+let saveChain=Promise.resolve();
+function seoulNow(){return new Date().toLocaleString("sv-SE",{timeZone:"Asia/Seoul"})}
+function buildPayload(stepName,final){
  save();
  const flat={};steps.forEach(([k])=>{const m=meta[k]||{switches:0,hiddenSec:0};flat["leave_"+k+"_n"]=m.switches;flat["leave_"+k+"_sec"]=m.hiddenSec});
  const a={...answers};const contact=a.contact||"";delete a.contact;delete a[""];
- const payload={...a,...flat,pid,cond:cond.id,order,assignSource,debug:DEBUG?1:0,totalSec:Math.round((Date.now()-t0)/1000),finishedAt:new Date().toISOString(),contact};
- for(let i=0;i<3;i++){try{const res=await fetch(ASSIGN_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});const j=await res.json();if(j&&j.ok)return true}catch(e){}await new Promise(r=>setTimeout(r,1500*(i+1)))}
+ const p={...a,...flat,pid,cond:cond.id,order,assignSource,debug:DEBUG?1:0,lastStep:stepName,totalSec:Math.round((Date.now()-t0)/1000)};
+ if(final){p.final=1;p.finishedAt=seoulNow();p.contact=contact}
+ return p}
+async function postPayload(p,tries){
+ for(let i=0;i<tries;i++){try{const res=await fetch(ASSIGN_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)});const j=await res.json();if(j&&j.ok)return true}catch(e){}await new Promise(r=>setTimeout(r,1000*(i+1)))}
  return false}
+function queueSave(stepName){const p=buildPayload(stepName,false);saveChain=saveChain.then(()=>postPayload(p,2)).catch(()=>{})}
+async function submitAll(){await saveChain;return postPayload(buildPayload("info",true),3)}
+function requireAll(){
+ const app=document.getElementById("app"),btn=[...app.querySelectorAll("button.btn.primary")].pop(),hint=app.querySelector(".row > span");
+ if(!btn)return;
+ const names=[...new Set([...app.querySelectorAll("input[type=radio]")].map(r=>r.name))],tas=[...app.querySelectorAll("textarea")];
+ const chk=()=>{const ok=names.every(n=>app.querySelector('input[type=radio][name="'+n+'"]:checked'))&&tas.every(t=>t.value.trim().length>=2);btn.disabled=!ok;if(hint){hint.textContent=ok?"":"모든 문항에 응답해야 다음으로 넘어갈 수 있습니다.";hint.style.color="#b45309"}};
+ app.oninput=chk;app.onchange=chk;chk()}
+window.addEventListener("beforeunload",e=>{if(saving||(steps[idx]&&steps[idx][0]==="info"&&!saved)){e.preventDefault();e.returnValue=""}});
 async function assign(){
  const q=new URLSearchParams(location.search),pc=q.get("cond"),po=q.get("order");let r=null;
  try{if(DEBUG&&pc&&po){r={cond:pc,order:po};assignSource="url"}else if(ASSIGN_URL){const res=await fetch(ASSIGN_URL+"?action=assign&pid="+pid);r=await res.json();assignSource="server"}}catch(e){}
@@ -80,20 +95,20 @@ function comeBack(){if(awayAt!==null){const r=rec(steps[idx][0]);if(!carry)r.swi
 document.addEventListener('visibilitychange',()=>document.hidden?goAway():comeBack());
 window.addEventListener('blur',goAway);window.addEventListener('focus',comeBack);
 let idx=0,cond=null,answers={},timer=null,left=0;
-function save(){answers.pid=pid;document.querySelectorAll('input:checked').forEach(x=>answers[x.name]=x.value);document.querySelectorAll('.field input,.field select,.field textarea').forEach(x=>answers[x.name]=x.value)}
-function move(n){if(timer){clearInterval(timer);timer=null}if(awayAt!==null){const r=rec(steps[idx][0]);if(!carry)r.switches++;r.hiddenSec+=Math.round((Date.now()-awayAt)/1000);awayAt=Date.now();carry=true}save();idx=n;render()}
+function save(){answers.pid=pid;document.querySelectorAll('input:checked').forEach(x=>answers[x.name]=x.value);document.querySelectorAll('.field input,.field select,.field textarea').forEach(x=>{if(x.type==="radio"||x.type==="checkbox")return;answers[x.name]=x.value})}
+function move(n){if(timer){clearInterval(timer);timer=null}if(awayAt!==null){const r=rec(steps[idx][0]);if(!carry)r.switches++;r.hiddenSec+=Math.round((Date.now()-awayAt)/1000);awayAt=Date.now();carry=true}save();if(ASSIGN_URL&&cond&&steps[idx][0]!=="info")queueSave(steps[idx][0]);idx=n;render()}
 function buttons(label="다음 단계"){return `<div class="row"><span></span><button class="btn primary" onclick="move(${idx+1})">${label} →</button></div>`}
 function timerHtml(sec){return sec?`<div class="timer" id="timer">남은 시간 ${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}</div>`:""}
-function beginTimer(sec){const end=Date.now()+sec*1000;left=sec;tick();timer=setInterval(()=>{left=Math.max(0,Math.ceil((end-Date.now())/1000));tick();if(left<=0){clearInterval(timer);timer=null;move(idx+1)}},500)}
+function beginTimer(sec){const end=Date.now()+sec*1000;left=sec;tick();timer=setInterval(()=>{left=Math.max(0,Math.ceil((end-Date.now())/1000));tick();if(left<=0){clearInterval(timer);timer=null;answers[steps[idx][0]+"_timeout"]=1;move(idx+1)}},500)}
 function tick(){let e=document.getElementById("timer");if(e){e.textContent=`남은 시간 ${String(Math.floor(left/60)).padStart(2,"0")}:${String(left%60).padStart(2,"0")}`;e.classList.toggle("urgent",left<=15)}}
 function render(){
- const [key,label,duration]=steps[idx];if(key==="done"&&ASSIGN_URL&&!saved){const app=document.getElementById("app");app.innerHTML='<p class="muted">응답을 저장하고 있습니다. 창을 닫지 말고 잠시만 기다려 주세요…</p>';if(saving)return;saving=true;submitAll().then(ok=>{saving=false;if(ok){saved=true;render()}else{app.innerHTML='<h1>저장에 실패했습니다</h1><p>인터넷 연결을 확인한 뒤 아래 버튼을 눌러 다시 시도해 주세요. 입력하신 내용은 이 창에 보관되어 있으니 창을 닫지 마세요.</p><button class="btn primary" onclick="render()">다시 시도</button>'}});return}
+ const [key,label,duration]=steps[idx];if(key==="done"&&ASSIGN_URL&&!saved){const app=document.getElementById("app");app.innerHTML='<div class="savebox"><div class="spin"></div><h1>응답을 저장하고 있습니다</h1><p><b>이 창을 닫거나 새로고침하지 마세요.</b><br>저장이 끝나면 "저장 완료" 화면이 나타납니다.</p></div>';if(saving)return;saving=true;submitAll().then(ok=>{saving=false;if(ok){saved=true;render()}else{app.innerHTML='<h1>저장에 실패했습니다</h1><p>인터넷 연결을 확인한 뒤 아래 버튼을 눌러 다시 시도해 주세요. 입력하신 내용은 이 창에 보관되어 있으니 창을 닫지 마세요.</p><button class="btn primary" onclick="render()">다시 시도</button>'}});return}
 if(key==="intro"&&!cond){document.getElementById("app").innerHTML='<p class="muted">잠시만 기다려 주세요…</p>';assign().then(render);return}document.getElementById("stepName").textContent=label;document.getElementById("stepNum").textContent=`${idx+1} / ${steps.length}`;document.getElementById("bar").style.width=(idx/(steps.length-1)*100)+"%";
  let h="";
  if(key==="guide"){
  h=`<div class="eyebrow">연구 참여 안내</div><h1>연구참여설명서</h1><p>본 연구에 참여하기 전에 아래 내용을 읽어 주세요. 각 항목의 제목을 누르면 자세한 내용을 확인할 수 있습니다.</p>
  <div class="info-grid">
- <div class="info-tile"><b>약 40분</b><span>온라인 1회 참여</span></div>
+ <div class="info-tile"><b>약 30분</b><span>온라인 1회 참여</span></div>
  <div class="info-tile"><b>자발적 참여</b><span>언제든 중단 가능</span></div>
  <div class="info-tile"><b>답례품 증정</b><span>전 과정 완료 및 유효한 응답 확인 후 지급</span></div>
  <div class="info-tile"><b>익명 처리</b><span>개인 식별 정보 비공개</span></div></div>
@@ -129,10 +144,10 @@ if(key==="intro"&&!cond){document.getElementById("app").innerHTML='<p class="mut
  else if(key==="retB"){h=`<div class="eyebrow">꿀벌의 춤 · 파지 검사</div><div class="row" style="margin-top:0"><div><h1>파지 검사</h1><p class="muted">학습한 내용을 자신의 언어로 최대한 자세하게 작성해 주세요. 제한 시간은 4분입니다.</p></div>${timerHtml(duration)}</div><div class="question"><p class="q">꿀벌의 춤이 어떻게 이루어지며, 춤을 통해 어떤 정보가 어떻게 전달되는지를 가능한 한 자세히 설명하시오.</p><div class="field"><textarea name="retB_recall" rows="12" placeholder="여기에 입력해 주세요."></textarea></div></div>${buttons()}`}
  else if(key==="trB"){h=`<div class="eyebrow">꿀벌의 춤 · 전이 검사</div><div class="row" style="margin-top:0"><div><h1>전이 검사</h1><p class="muted">각 질문에 대해 생각나는 대로 자유롭게 작성해 주세요. 제한 시간은 4분입니다.</p></div>${timerHtml(duration)}</div>${trB.map((q,i)=>`<div class="question"><p class="q">${i+1}. ${q}</p><div class="field"><textarea name="trB_q${i+1}" rows="4" placeholder="여기에 입력해 주세요."></textarea></div></div>`).join("")}${buttons()}`}
  else if(key==="rest"){h=`<div class="eyebrow">휴식</div><div class="row" style="margin-top:0"><h1>잠시 쉬어가세요</h1>${timerHtml(duration)}</div><p>첫 번째 주제가 끝났습니다. 5분간 휴식한 뒤 두 번째 주제로 넘어갑니다. 준비가 되었다면 휴식을 건너뛰고 바로 시작할 수 있습니다.</p><div class="row"><span class="muted">시간이 끝나면 자동으로 다음 단계로 이동합니다.</span><button class="btn secondary" onclick="move(idx+1)">휴식 건너뛰기 →</button></div>`}
- else if(key==="info"){h=`<div class="eyebrow">마지막 단계</div><h1>참여자 정보</h1><p>연구에 참여해 주셔서 감사합니다. 마지막으로 아래 정보를 입력해 주세요. 연락처는 답례품 발송에만 사용되며, 발송 후 즉시 폐기됩니다.</p><div class="field"><b>성별</b><div class="options">${["남성","여성","기타 / 응답하지 않음"].map(v=>`<label class="opt"><input type="radio" name="gender" value="${v}"><span>${v}</span></label>`).join("")}</div></div><div class="field"><b>만 나이</b><input type="number" name="age" min="19" max="99" inputmode="numeric" placeholder="예: 23"></div><div class="field"><b>학년</b><select name="grade"><option value="">선택해 주세요</option><option>1학년</option><option>2학년</option><option>3학년</option><option>4학년 이상</option></select></div><div class="field"><b>답례품 수령용 휴대폰 번호</b><input type="tel" name="contact" inputmode="numeric" autocomplete="off" placeholder="010-0000-0000"></div><div class="row"><span class="muted" id="infoNote">모든 항목을 입력해 주세요.</span><button id="infoNext" class="btn primary" disabled onclick="move(idx+1)">제출하고 종료 →</button></div>`}
- else {h=`<div class="eyebrow">연구 종료</div><h1>참여해 주셔서 감사합니다</h1><p>모든 절차가 끝났습니다. 답례품은 응답 확인 후 입력해 주신 연락처로 발송해 드립니다. 문의하실 때는 아래 참여 번호를 알려 주세요. 이 창을 닫으셔도 됩니다.</p><div class="summary"><div><span>참여 번호</span><strong>${pid}</strong></div></div>${DEBUG?`<div class="summary"><div><span>조건</span><strong>${cond.id}</strong></div><div><span>임시 기록 항목 수</span><strong>${Object.keys(answers).length}</strong></div></div><div class="row"><button class="btn secondary" onclick="download()">임시 JSON 내보내기</button><button class="btn primary" onclick="location.reload()">다시 미리보기</button></div>`:""}`}
+ else if(key==="info"){h=`<div class="eyebrow">마지막 단계</div><h1>참여자 정보</h1><p>연구에 참여해 주셔서 감사합니다. 마지막으로 아래 정보를 입력해 주세요. 연락처는 답례품 발송에만 사용되며, 발송 후 즉시 폐기됩니다.</p><div class="notice warn"><b>※ 제출 후 "저장 완료" 화면이 나올 때까지 창을 닫지 마세요.</b></div><div class="field"><b>성별</b><div class="options">${["남성","여성","기타 / 응답하지 않음"].map(v=>`<label class="opt"><input type="radio" name="gender" value="${v}"><span>${v}</span></label>`).join("")}</div></div><div class="field"><b>만 나이</b><input type="number" name="age" min="19" max="99" inputmode="numeric" placeholder="예: 23"></div><div class="field"><b>학년</b><select name="grade"><option value="">선택해 주세요</option><option>1학년</option><option>2학년</option><option>3학년</option><option>4학년 이상</option></select></div><div class="field"><b>답례품 수령용 휴대폰 번호</b><input type="tel" name="contact" inputmode="numeric" autocomplete="off" placeholder="010-0000-0000"></div><div class="row"><span class="muted" id="infoNote">모든 항목을 입력해 주세요.</span><button id="infoNext" class="btn primary" disabled onclick="move(idx+1)">제출하고 종료 →</button></div>`}
+ else {h=`${saved?'<div class="okbox">✔ 응답이 저장되었습니다. 이제 이 창을 닫으셔도 됩니다.</div>':""}<div class="eyebrow">연구 종료</div><h1>참여해 주셔서 감사합니다</h1><p>모든 절차가 끝났습니다. 답례품은 응답 확인 후 입력해 주신 연락처로 발송해 드립니다. 문의하실 때는 아래 참여 번호를 알려 주세요. 이 창을 닫으셔도 됩니다.</p><div class="summary"><div><span>참여 번호</span><strong>${pid}</strong></div></div>${DEBUG?`<div class="summary"><div><span>조건</span><strong>${cond.id}</strong></div><div><span>임시 기록 항목 수</span><strong>${Object.keys(answers).length}</strong></div></div><div class="row"><button class="btn secondary" onclick="download()">임시 JSON 내보내기</button><button class="btn primary" onclick="location.reload()">다시 미리보기</button></div>`:""}`}
  if(["priorA","priorB","mcA","retA","trA","mcB","retB","trB"].includes(key))h=h.replace('<div class="question">','<div class="notice warn"><b>※ 본인의 기억과 지식만으로 답해 주세요.</b>인터넷 검색이나 다른 자료는 참고하지 말아 주세요.</div><div class="question">');
- document.getElementById("app").innerHTML=h;
+ document.getElementById("app").innerHTML=h;window.scrollTo(0,0);
  if(key==="consent"){
    const checks=[...document.querySelectorAll(".consent-check")], btn=document.getElementById("consentNext"), note=document.getElementById("consentNotice");
    const sync=()=>{const ok=checks.every(c=>c.checked);btn.disabled=!ok;note.textContent=ok?"모든 항목에 동의했습니다. 다음 단계로 이동할 수 있습니다.":"계속하려면 세 항목에 모두 동의해 주세요.";};
@@ -140,6 +155,7 @@ if(key==="intro"&&!cond){document.getElementById("app").innerHTML='<p class="mut
  }
  if(key==="info"){const f=()=>{const v=n=>(document.querySelector(`[name="${n}"]`)||{}).value,g=document.querySelector('[name="gender"]:checked');const ok=g&&+v("age")>=19&&v("grade")&&(v("contact")||"").replace(/\D/g,"").length>=10;document.getElementById("infoNext").disabled=!ok;document.getElementById("infoNote").textContent=ok?"입력이 완료되었습니다.":"모든 항목을 입력해 주세요. (만 19세 이상)"};document.querySelectorAll(".field input,.field select").forEach(x=>{x.addEventListener("input",f);x.addEventListener("change",f)})}
  if(key==="videoA"||key==="videoB")setupVideo(key);
+ if(["priorA","priorB","checkA","checkB","loadA","loadB","mcA","mcB","retA","retB","trA","trB"].includes(key))requireAll();
  if(duration)beginTimer(duration)
 }
 function download(){save();let blob=new Blob([JSON.stringify({pid,condition:cond,order,assignSource,answers,pageLeave:meta,prototype:true},null,2)],{type:"application/json"});let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="prototype-responses.json";a.click();URL.revokeObjectURL(a.href)}
