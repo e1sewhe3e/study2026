@@ -26,6 +26,7 @@ button:disabled,.btn:disabled{background:#d5d9e0!important;color:#8b93a1!importa
 <main><div class="meta"><span id="stepName">연구 설명서</span><span id="stepNum">1 / 12</span></div><div class="track"><div class="bar" id="bar"></div></div><section class="card" id="app"></section></main>
 <footer>Prototype only · 이 미리보기는 답변을 외부 서버로 전송하지 않습니다.</footer>
 <script>
+const BUILD="2026-11-02-a";
 const TEST=new URLSearchParams(location.search).has("test");
 const conditions=[{id:"A",voice:"",gesture:""},{id:"B",voice:"",gesture:""},{id:"C",voice:"",gesture:""},{id:"D",voice:"",gesture:""}];
 const pkA=[["뇌우에서 지표면의 공기가 상승하는 원인은 무엇인가?", ["태양 복사열이 공기를 가열하여 상승하게 한다.", "더 따뜻한 공기 흐름이 유입되어 기존의 공기를 가열한다.", "차갑고 습한 공기가 더 따뜻한 지표면 위로 이동하면서 가열된다.", "상층의 공기가 냉각되어 하강하면서 지표면의 공기를 위로 밀어 올린다."]], ["수증기가 응결하면 어떤 일이 일어나는가?", ["수증기가 공기에 의해 가열되어 더욱 상승한다.", "물이 즉시 지표면으로 떨어진다.", "수증기에 전하가 축적된다.", "수증기가 물방울로 응결되어 구름을 형성한다."]], ["빗방울과 작은 얼음 알갱이(빙정, 氷晶)가 구름 속을 통과하며 떨어질 때 어떤 일이 일어나는가?", ["빗방울과 빙정이 번개가 지나가는 통로를 만든다.", "빗방울과 빙정이 서로 마찰하면서 전하가 발생한다.", "빗방울과 빙정이 사라져 생긴 빈 공간을 메우기 위해 상승기류가 형성된다.", "빗방울과 빙정이 구름 속 공기의 일부를 아래로 끌어내려 하강기류 만든다."]], ["번개가 치기 전에 구름의 아래쪽에는 무엇이 축적되는가?", ["양(+)전하가 축적된다.", "음(-)전하가 축적된다.", "양(+)전하와 음(-)전하가 함께 축적된다.", "양(+)전하와 음(-)전하가 빠르게 변화하며 섞여 있다."]], ["두 전기가 통하는 길(선도) 에는 어떤 일이 일어나는가?", ["첫 번째 선도가 구름에 도달한 후, 두 번째 선도가 지면에서 출발하여 다시 지면에 도달한다.", "두 선도가 서로를 지나쳐 동시에 이동한다.", "두 선도가 공중에서 서로 만난다.", "첫 번째 선도가 지면에 도달한 후, 두 번째 선도가 지면에서 출발하여 구름에 도달한다."]]];
@@ -65,7 +66,7 @@ const t0=Date.now();let saved=false,saving=false;
 function renderTestBar(){
  let bar=document.getElementById("testbar");
  if(!bar){bar=document.createElement("div");bar.id="testbar";bar.style.cssText="position:fixed;left:0;right:0;bottom:0;background:#1f2937;color:#fff;padding:8px 12px;font-size:12px;z-index:99;display:flex;gap:12px;flex-wrap:wrap;align-items:center";document.body.appendChild(bar);document.body.style.paddingBottom="76px";
-  bar.innerHTML='<b>내측 모드 · 저장 안 됨 · 타이머 정지</b><label>단계 <select id="tbStep"></select></label><label>조건 <select id="tbCond"><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>순서 <select id="tbOrder"><option value="LB">번개→꿀벌</option><option value="BL">꿀벌→번개</option></select></label>';
+  bar.innerHTML='<b>내측 모드 · 저장 안 됨 · 타이머 정지</b><span style="opacity:.7">빌드 '+BUILD+'</span><label>단계 <select id="tbStep"></select></label><label>조건 <select id="tbCond"><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>순서 <select id="tbOrder"><option value="LB">번개→꿀벌</option><option value="BL">꿀벌→번개</option></select></label>';
   document.getElementById("tbStep").onchange=e=>{idx=+e.target.value;render()};
   document.getElementById("tbCond").onchange=e=>{cond=conditions.find(c=>c.id===e.target.value);render()};
   document.getElementById("tbOrder").onchange=e=>{const k=steps[idx][0];order=e.target.value;steps=buildSteps(order);idx=Math.max(0,steps.findIndex(s=>s[0]===k));render()}}
