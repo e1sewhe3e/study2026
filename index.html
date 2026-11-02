@@ -26,7 +26,7 @@ button:disabled,.btn:disabled{background:#d5d9e0!important;color:#8b93a1!importa
 <main><div class="meta"><span id="stepName">연구 설명서</span><span id="stepNum">1 / 12</span></div><div class="track"><div class="bar" id="bar"></div></div><section class="card" id="app"></section></main>
 <footer>Prototype only · 이 미리보기는 답변을 외부 서버로 전송하지 않습니다.</footer>
 <script>
-const BUILD="2026-11-02-a";
+const BUILD="2026-11-02-b";
 const TEST=new URLSearchParams(location.search).has("test");
 const conditions=[{id:"A",voice:"",gesture:""},{id:"B",voice:"",gesture:""},{id:"C",voice:"",gesture:""},{id:"D",voice:"",gesture:""}];
 const pkA=[["뇌우에서 지표면의 공기가 상승하는 원인은 무엇인가?", ["태양 복사열이 공기를 가열하여 상승하게 한다.", "더 따뜻한 공기 흐름이 유입되어 기존의 공기를 가열한다.", "차갑고 습한 공기가 더 따뜻한 지표면 위로 이동하면서 가열된다.", "상층의 공기가 냉각되어 하강하면서 지표면의 공기를 위로 밀어 올린다."]], ["수증기가 응결하면 어떤 일이 일어나는가?", ["수증기가 공기에 의해 가열되어 더욱 상승한다.", "물이 즉시 지표면으로 떨어진다.", "수증기에 전하가 축적된다.", "수증기가 물방울로 응결되어 구름을 형성한다."]], ["빗방울과 작은 얼음 알갱이(빙정, 氷晶)가 구름 속을 통과하며 떨어질 때 어떤 일이 일어나는가?", ["빗방울과 빙정이 번개가 지나가는 통로를 만든다.", "빗방울과 빙정이 서로 마찰하면서 전하가 발생한다.", "빗방울과 빙정이 사라져 생긴 빈 공간을 메우기 위해 상승기류가 형성된다.", "빗방울과 빙정이 구름 속 공기의 일부를 아래로 끌어내려 하강기류 만든다."]], ["번개가 치기 전에 구름의 아래쪽에는 무엇이 축적되는가?", ["양(+)전하가 축적된다.", "음(-)전하가 축적된다.", "양(+)전하와 음(-)전하가 함께 축적된다.", "양(+)전하와 음(-)전하가 빠르게 변화하며 섞여 있다."]], ["두 전기가 통하는 길(선도) 에는 어떤 일이 일어나는가?", ["첫 번째 선도가 구름에 도달한 후, 두 번째 선도가 지면에서 출발하여 다시 지면에 도달한다.", "두 선도가 서로를 지나쳐 동시에 이동한다.", "두 선도가 공중에서 서로 만난다.", "첫 번째 선도가 지면에 도달한 후, 두 번째 선도가 지면에서 출발하여 구름에 도달한다."]]];
@@ -83,10 +83,11 @@ function setupSkip(key){
  if(skipT)clearTimeout(skipT);
  skipT=setTimeout(()=>{btn.disabled=false;if(hint){hint.textContent="더 이상 기억나는 내용이 없다면 다음 단계로 이동하세요.";hint.style.color="#8a5a00"}},90000)}
 function seoulNow(){return new Date().toLocaleString("sv-SE",{timeZone:"Asia/Seoul"})}
+function fmtPhone(v){let d=(v||"").replace(/\D/g,"");if(d.length===10&&d.indexOf("10")===0)d="0"+d;if(d.length===11)return d.slice(0,3)+"-"+d.slice(3,7)+"-"+d.slice(7);if(d.length===10)return d.slice(0,3)+"-"+d.slice(3,6)+"-"+d.slice(6);return v}
 function buildPayload(stepName,final){
  save();
  const flat={};steps.forEach(([k])=>{const m=meta[k]||{switches:0,hiddenSec:0};flat["leave_"+k+"_n"]=m.switches;flat["leave_"+k+"_sec"]=m.hiddenSec});
- const a={...answers};const contact=a.contact||"";delete a.contact;delete a[""];
+ const a={...answers};const contact=fmtPhone(a.contact||"");delete a.contact;delete a[""];
  const p={...a,...flat,pid,cond:cond.id,order,assignSource,debug:DEBUG?1:0,lastStep:stepName,totalSec:Math.round((Date.now()-t0)/1000)};
  if(final){p.final=1;p.finishedAt=seoulNow();p.contact=contact}
  return p}
