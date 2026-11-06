@@ -50,6 +50,9 @@ function setupVideo(key){
  const fmt=t=>{t=Math.floor(t||0);return Math.floor(t/60)+":"+String(t%60).padStart(2,"0")};
  v.addEventListener("canplay",()=>{msg.style.display="none";if(!v.ended)pb.disabled=false});
  v.addEventListener("loadedmetadata",()=>{tm.textContent="0:00 / "+fmt(v.duration);msg.style.display="none";if(!v.ended)pb.disabled=false});
+ v.addEventListener("progress",()=>{if(msg.style.display!=="none"&&v.duration&&v.buffered.length){msg.innerHTML="<div>영상을 불러오는 중입니다… "+Math.round(v.buffered.end(v.buffered.length-1)/v.duration*100)+"%<br><small>연결 상태에 따라 시간이 걸릴 수 있습니다.</small></div>"}});
+ v.addEventListener("waiting",()=>{if(!v.paused&&!v.ended){msg.style.display="grid";msg.innerHTML="<div>버퍼링 중입니다. 잠시만 기다려 주세요…</div>"}});
+ v.addEventListener("playing",()=>{msg.style.display="none"});
  v.addEventListener("error",()=>{answers[key+"_loadError"]++;msg.style.display="grid";msg.innerHTML='<div>영상을 불러오지 못했습니다.<br>인터넷 연결을 확인한 뒤 아래 버튼을 눌러 주세요.<br><br><button class="btn secondary" id="vretry">다시 시도</button></div>';document.getElementById("vretry").onclick=()=>{msg.innerHTML="<div>영상을 불러오는 중입니다…</div>";v.load()}});
  v.addEventListener("timeupdate",()=>{if(v.currentTime-last<=1.5&&v.currentTime>=last-0.5)last=v.currentTime;answers[key+"_playedSec"]=Math.round(last);tm.textContent=fmt(last)+" / "+fmt(v.duration)});
  v.addEventListener("seeking",()=>{if(Math.abs(v.currentTime-last)>1.5)v.currentTime=last});
@@ -72,6 +75,10 @@ function renderTestBar(){
  const sel=document.getElementById("tbStep");sel.innerHTML=steps.map((s,i)=>'<option value="'+i+'">'+(i+1)+". "+s[0]+" · "+s[1]+"</option>").join("");sel.value=idx;
  document.getElementById("tbCond").value=cond?cond.id:"A";document.getElementById("tbOrder").value=order}
 if(TEST)setTimeout(()=>{assign().then(()=>renderTestBar())},0);
+let T_ASSIGN=15000,T_SAVE=25000,T_PROGRESS=12000,seq=0;
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+async function fetchJSON(url,opts,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(url,{...opts,signal:c.signal});return await r.json()}finally{clearTimeout(t)}}
+function downloadBackup(){const p=buildPayload("info",true);const b=new Blob([JSON.stringify(p,null,1)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="response_"+pid+".json";document.body.appendChild(a);a.click();a.remove()}
 let saveChain=Promise.resolve(),skipT=null;
 function setupSkip(key){
  const app=document.getElementById("app"),btn=[...app.querySelectorAll("button.btn.primary")].pop(),hint=app.querySelector(".row > span"),ta=app.querySelector("textarea"),start=Date.now();
@@ -87,14 +94,14 @@ function buildPayload(stepName,final){
  save();
  const flat={};steps.forEach(([k])=>{const m=meta[k]||{switches:0,hiddenSec:0};flat["leave_"+k+"_n"]=m.switches;flat["leave_"+k+"_sec"]=m.hiddenSec});
  const a={...answers};const contact=fmtPhone(a.contact||"");delete a.contact;delete a[""];
- const p={...a,...flat,pid,cond:cond.id,order,assignSource,debug:DEBUG?1:0,device:/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)?"mobile":"desktop",screen:screen.width+"x"+screen.height,viewport:innerWidth+"x"+innerHeight,lastStep:stepName,totalSec:Math.round((Date.now()-t0)/1000)};
+ const p={...a,...flat,pid,cond:cond.id,order,assignSource,debug:DEBUG?1:0,device:/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)?"mobile":"desktop",screen:screen.width+"x"+screen.height,viewport:innerWidth+"x"+innerHeight,lastStep:stepName,seq:++seq,totalSec:Math.round((Date.now()-t0)/1000)};
  if(final){p.final=1;p.finishedAt=seoulNow();p.contact=contact}
  return p}
-async function postPayload(p,tries){
- for(let i=0;i<tries;i++){try{const res=await fetch(ASSIGN_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)});const j=await res.json();if(j&&j.ok)return true}catch(e){}await new Promise(r=>setTimeout(r,1000*(i+1)))}
+async function postPayload(p,tries,ms){
+ for(let i=0;i<tries;i++){try{const j=await fetchJSON(ASSIGN_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(p)},ms);if(j&&j.ok)return true;if(j&&j.busy)await delay(1500)}catch(e){}if(i<tries-1)await delay(1000*(i+1))}
  return false}
-function queueSave(stepName){const p=buildPayload(stepName,false);saveChain=saveChain.then(()=>postPayload(p,2)).catch(()=>{})}
-async function submitAll(){await saveChain;return postPayload(buildPayload("info",true),3)}
+function queueSave(stepName){const p=buildPayload(stepName,false);saveChain=saveChain.then(()=>postPayload(p,1,T_PROGRESS)).catch(()=>{})}
+async function submitAll(){await Promise.race([saveChain,delay(3000)]);return postPayload(buildPayload("info",true),4,T_SAVE)}
 function requireAll(){if(TEST)return;
  const app=document.getElementById("app"),btn=[...app.querySelectorAll("button.btn.primary")].pop(),hint=app.querySelector(".row > span");
  if(!btn)return;
@@ -104,7 +111,7 @@ function requireAll(){if(TEST)return;
 window.addEventListener("beforeunload",e=>{if(saving||(steps[idx]&&steps[idx][0]==="info"&&!saved)){e.preventDefault();e.returnValue=""}});
 async function assign(){
  const q=new URLSearchParams(location.search),pc=q.get("cond"),po=q.get("order");let r=null;
- try{if(DEBUG&&pc&&po){r={cond:pc,order:po};assignSource="url"}else if(ASSIGN_URL){const res=await fetch(ASSIGN_URL+"?action=assign&pid="+pid);r=await res.json();assignSource="server"}}catch(e){}
+ try{if(DEBUG&&pc&&po){r={cond:pc,order:po};assignSource="url"}else if(ASSIGN_URL){for(let i=0;i<2&&!r;i++){try{const j=await fetchJSON(ASSIGN_URL+"?action=assign&pid="+pid,{},T_ASSIGN);if(j&&j.cond)r=j}catch(e){}}if(r)assignSource="server"}}catch(e){}
  if(!r||!conditions.some(c=>c.id===r.cond)){r={cond:"ABCD"[Math.floor(Math.random()*4)],order:Math.random()<.5?"LB":"BL"};assignSource="local"}
  cond=conditions.find(c=>c.id===r.cond);order=r.order==="BL"?"BL":"LB";steps=buildSteps(order);answers.order=order;answers.assignSource=assignSource}
 const DEBUG=new URLSearchParams(location.search).has('debug')||TEST;
@@ -123,8 +130,8 @@ function timerHtml(sec){return sec?`<div class="timer" id="timer">남은 시간 
 function beginTimer(sec){if(TEST)return;const end=Date.now()+sec*1000;left=sec;tick();timer=setInterval(()=>{left=Math.max(0,Math.ceil((end-Date.now())/1000));tick();if(left<=0){clearInterval(timer);timer=null;answers[steps[idx][0]+"_timeout"]=1;move(idx+1)}},500)}
 function tick(){let e=document.getElementById("timer");if(e){e.textContent=`남은 시간 ${String(Math.floor(left/60)).padStart(2,"0")}:${String(left%60).padStart(2,"0")}`;e.classList.toggle("urgent",left<=15)}}
 function render(){
- const [key,label,duration]=steps[idx];if(key==="done"&&ASSIGN_URL&&!saved){const app=document.getElementById("app");app.innerHTML='<div class="savebox"><div class="spin"></div><h1>응답을 저장하고 있습니다</h1><p><b>이 창을 닫거나 새로고침하지 마세요.</b><br>저장이 끝나면 "저장 완료" 화면이 나타납니다.</p></div>';if(saving)return;saving=true;submitAll().then(ok=>{saving=false;if(ok){saved=true;render()}else{app.innerHTML='<h1>저장에 실패했습니다</h1><p>인터넷 연결을 확인한 뒤 아래 버튼을 눌러 다시 시도해 주세요. 입력하신 내용은 이 창에 보관되어 있으니 창을 닫지 마세요.</p><button class="btn primary" onclick="render()">다시 시도</button>'}});return}
-if(key==="intro"&&!cond){document.getElementById("app").innerHTML='<p class="muted">잠시만 기다려 주세요…</p>';assign().then(render);return}document.getElementById("stepName").textContent=label;document.getElementById("stepNum").textContent=`${idx+1} / ${steps.length}`;document.getElementById("bar").style.width=(idx/(steps.length-1)*100)+"%";
+ const [key,label,duration]=steps[idx];if(key==="done"&&ASSIGN_URL&&!saved){const app=document.getElementById("app");app.innerHTML='<div class="savebox"><div class="spin"></div><h1>응답을 저장하고 있습니다</h1><p><b>이 창을 닫거나 새로고침하지 마세요.</b><br>저장이 끝나면 "저장 완료" 화면이 나타납니다.</p><p id="saveslow" style="display:none">연결이 느립니다. 계속 기다려 주세요.</p></div>';if(saving)return;saving=true;const slowT=setTimeout(()=>{const e=document.getElementById("saveslow");if(e)e.style.display="block"},12000);submitAll().then(ok=>{clearTimeout(slowT);saving=false;if(ok){saved=true;render()}else{app.innerHTML='<h1>저장에 실패했습니다</h1><p>인터넷 연결을 확인한 뒤 아래 "다시 시도"를 눌러 주세요. 입력하신 내용은 이 창에 보관되어 있으니 창을 닫지 마세요.</p><p>계속 실패하면 "응답 파일 내려받기"를 눌러 파일을 저장한 뒤 연구자에게 보내 주세요. 참여 번호: <b>'+pid+'</b></p><button class="btn primary" onclick="render()">다시 시도</button> <button class="btn secondary" onclick="downloadBackup()">응답 파일 내려받기</button>'}});return}
+if(key==="intro"&&!cond){document.getElementById("app").innerHTML='<div class="savebox"><div class="spin"></div><h1>연결 중입니다</h1><p>잠시만 기다려 주세요.<br><b>창을 닫거나 새로고침하지 마세요.</b></p></div>';assign().then(render);return}document.getElementById("stepName").textContent=label;document.getElementById("stepNum").textContent=`${idx+1} / ${steps.length}`;document.getElementById("bar").style.width=(idx/(steps.length-1)*100)+"%";
  let h="";
  if(key==="guide"){
  h=`<div class="eyebrow">연구 참여 안내</div><h1>연구참여설명서</h1><p>본 연구에 참여하기 전에 아래 내용을 읽어 주세요. 각 항목의 제목을 누르면 자세한 내용을 확인할 수 있습니다.</p>
